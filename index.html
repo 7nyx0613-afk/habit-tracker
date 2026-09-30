@@ -36,6 +36,26 @@
 </head>
 <body class="bg-[#0b0f17] text-slate-100 min-h-screen font-sans pb-28">
 
+  <!-- 密碼鎖定畫面遮罩 (未通過驗證前顯示) -->
+  <div id="authLockScreen" class="fixed inset-0 bg-[#0b0f17] z-50 flex items-center justify-center p-4">
+    <div class="bg-[#121826] border border-slate-800 rounded-3xl p-8 max-w-sm w-full text-center space-y-5 shadow-2xl">
+      <div class="w-12 h-12 bg-indigo-600 rounded-2xl mx-auto flex items-center justify-center text-xl font-bold">🔒</div>
+      <div>
+        <h2 class="text-lg font-bold text-white">請輸入密碼解鎖</h2>
+        <p class="text-xs text-slate-400 mt-1">此管理頁面已受密碼保護</p>
+      </div>
+      <div>
+        <input type="password" id="appPasswordInput" placeholder="輸入存取密碼" 
+               onkeydown="if(event.key==='Enter') submitPassword()"
+               class="w-full bg-[#1a2336] border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-center text-white focus:outline-none focus:border-indigo-500" />
+        <p id="passwordErrorMsg" class="hidden text-rose-400 text-xs mt-2 font-medium">密碼錯誤，請重新輸入</p>
+      </div>
+      <button onclick="submitPassword()" class="w-full bg-indigo-600 hover:bg-indigo-500 py-2.5 rounded-xl font-medium text-sm transition shadow-lg shadow-indigo-600/30">
+        進入系統
+      </button>
+    </div>
+  </div>
+
   <!-- 頂部 Header -->
   <header class="sticky top-0 z-30 bg-[#0f1420]/90 backdrop-blur border-b border-slate-800/80 p-4">
     <div class="max-w-2xl mx-auto flex justify-between items-center">
@@ -44,12 +64,15 @@
         <h1 class="font-bold text-base text-white tracking-wide">時間、習慣管理</h1>
         <span id="loadingIndicator" class="hidden text-xs text-indigo-400 animate-pulse ml-2">同步中...</span>
       </div>
-      <div class="flex gap-2">
+      <div class="flex items-center gap-2">
         <button onclick="openTagModal()" class="bg-[#181f30] hover:bg-slate-700 border border-slate-700/60 text-xs px-3 py-1.5 rounded-xl text-slate-300 font-medium transition">
           🏷️ 管理科目
         </button>
         <button onclick="openHabitModal()" class="bg-indigo-600 hover:bg-indigo-500 text-xs px-3 py-1.5 rounded-xl text-white font-medium transition shadow-lg shadow-indigo-600/30">
           + 新增習慣
+        </button>
+        <button onclick="logout()" title="登出系統" class="bg-[#181f30] hover:bg-rose-950 border border-slate-700/60 text-xs px-2.5 py-1.5 rounded-xl text-slate-400 hover:text-rose-300 transition">
+          🔒
         </button>
       </div>
     </div>
@@ -439,8 +462,10 @@
   </div>
 
   <script>
-    // ⚠️ 請將此處替換為你部署的 GAS 網頁應用程式網址 (Web app URL)
-    const GAS_API_URL = "https://script.googleusercontent.com/macros/echo?user_content_key=AUkAhnQI9LdgpCA-uPgnHV3Sqon1pTau28Lsb_YLjDVvUysPfTq8ZlBlpiAWR0nG9eHXPrBUN7NSsMUg_mRtbR1G6cYhIKDfo4BCVef6aYUO5tuS53xFOyiVWlSLP-DRaW28Gpjqyb-JCz7CIdmP5V_j20Q-fpcXb7rxa8yfFUDL7ffkjLMt8DPzznkLwXaP2fEx4Y1O3O2mCpGrJlj5AlhOZi8sQPDL0ASO6pUfFFtYZDuyzoqkqqMIs6T8EDFP_rZC_2kZXPsZBFguPgxu13TJNhgpyEDcLA&lib=MhG6i1-BqqLB2sl-3eRAkELE8jt-r_prn";
+    // ⚠️ 請務必將此處替換為你實際部署的 GAS 網頁應用程式網址 (Web app URL)
+    const GAS_API_URL = "https://script.googleusercontent.com/macros/echo?user_content_key=AUkAhnQBI0wl6Mib76_I_7MVZEE0bf5jbmuXnWeSk9AqcQlUlmwn-j0W1MSWp9s6pgQ9osfF2mb7x5euwaw8bMwB3MFP_dWUfcx56eL92wTZ9_1T-R5aYf6YZdL4QMS-SFBb050_CxWrxiw14vI4lzy8YblZ11sGEAwkNT-nUKyyXsqLPd30MTMxEnG6-jN-9MbXocW2a_YwHUOAT_-OsTnanTpMeyYiPy-FKlIjEiS7c3tadioRduMNbfLcCmDo8FQ4XhKV0aeBLvqEyXhFGPf2RCUg5hdTEw&lib=MhG6i1-BqqLB2sl-3eRAkELE8jt-r_prn";
+
+    let authToken = sessionStorage.getItem('tracker_auth_token') || '';
 
     let appData = {
       habits: [],
@@ -481,22 +506,63 @@
       if (el) el.classList.toggle('hidden', !show);
     }
 
-    // 封裝通用 API 呼叫函式
-    async function callApi(action, payload = {}) {
-      if (GAS_API_URL.includes("你的_GAS_DEPLOYMENT_ID")) {
-        console.warn("尚未填入正確的 GAS_API_URL");
-        return null;
+    /* -------------------------------------------------------------
+       身份驗證與密碼管理
+    ------------------------------------------------------------- */
+    async function submitPassword() {
+      const pwdInput = document.getElementById('appPasswordInput');
+      const errorMsg = document.getElementById('passwordErrorMsg');
+      const token = pwdInput.value.trim();
+
+      if (!token) return;
+      showLoading(true);
+      errorMsg.classList.add('hidden');
+
+      try {
+        const res = await fetch(GAS_API_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ action: 'verifyOnly', auth: token })
+        });
+        const result = await res.json();
+
+        if (result && result.success) {
+          authToken = token;
+          sessionStorage.setItem('tracker_auth_token', token);
+          document.getElementById('authLockScreen').classList.add('hidden');
+          fetchData();
+        } else {
+          errorMsg.classList.remove('hidden');
+          pwdInput.select();
+        }
+      } catch (err) {
+        alert("驗證失敗，請檢查網路連線或 GAS API 網址設定");
+      } finally {
+        showLoading(false);
       }
+    }
+
+    function logout() {
+      sessionStorage.removeItem('tracker_auth_token');
+      authToken = '';
+      document.getElementById('appPasswordInput').value = '';
+      document.getElementById('authLockScreen').classList.remove('hidden');
+    }
+
+    async function callApi(action, payload = {}) {
+      if (!authToken) return null;
       showLoading(true);
       try {
         const response = await fetch(GAS_API_URL, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'text/plain;charset=utf-8' // 避免 CORS preflight 觸發 OPTION 阻擋
-          },
-          body: JSON.stringify({ action, payload })
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ action, payload, auth: authToken })
         });
-        return await response.json();
+        const result = await response.json();
+        if (result && result.message === "密碼錯誤或未授權") {
+          logout();
+        }
+        return result;
       } catch (err) {
         console.error(`API [${action}] 失敗:`, err);
       } finally {
@@ -521,27 +587,29 @@
       renderTags();
       renderHabits();
       renderCalendar();
-      fetchData();
+
+      if (authToken) {
+        document.getElementById('authLockScreen').classList.add('hidden');
+        fetchData();
+      } else {
+        document.getElementById('authLockScreen').classList.remove('hidden');
+      }
     });
 
     async function fetchData() {
-      if (GAS_API_URL.includes("你的_GAS_DEPLOYMENT_ID")) {
-        renderTags();
-        renderHabits();
-        renderCalendar();
-        renderInsightsCharts();
-        return;
-      }
+      if (GAS_API_URL.includes("你的_GAS_DEPLOYMENT_ID") || !authToken) return;
       showLoading(true);
       try {
-        const res = await fetch(GAS_API_URL);
+        const res = await fetch(`${GAS_API_URL}?auth=${encodeURIComponent(authToken)}`);
         const data = await res.json();
-        if (data) {
+        if (data && data.success !== false) {
           appData = data;
           renderTags();
           renderHabits();
           renderCalendar();
           renderInsightsCharts();
+        } else if (data.message) {
+          logout();
         }
       } catch (err) {
         console.warn("載入資料失敗:", err);

@@ -1,0 +1,1816 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>時間、習慣管理</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    .github-pixel {
+      width: 16px;
+      height: 16px;
+      border-radius: 3px;
+      background-color: #1e222d;
+      transition: transform 0.15s ease, filter 0.15s ease;
+      cursor: pointer;
+    }
+    .github-pixel:hover {
+      transform: scale(1.3);
+      z-index: 10;
+    }
+    .github-pixel.active {
+      box-shadow: 0 0 5px rgba(0, 0, 0, 0.4);
+    }
+    .github-pixel.empty-day {
+      background-color: transparent !important;
+      cursor: default;
+      pointer-events: none;
+    }
+    input[type="time"]::-webkit-calendar-picker-indicator,
+    input[type="date"]::-webkit-calendar-picker-indicator {
+      filter: invert(0.8);
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body class="bg-[#0b0f17] text-slate-100 min-h-screen font-sans pb-28">
+
+  <!-- 頂部 Header -->
+  <header class="sticky top-0 z-30 bg-[#0f1420]/90 backdrop-blur border-b border-slate-800/80 p-4">
+    <div class="max-w-2xl mx-auto flex justify-between items-center">
+      <div class="flex items-center gap-2">
+        <div class="w-7 h-7 rounded-lg bg-indigo-600 flex items-center justify-center font-black text-sm">時</div>
+        <h1 class="font-bold text-base text-white tracking-wide">時間、習慣管理</h1>
+        <span id="loadingIndicator" class="hidden text-xs text-indigo-400 animate-pulse ml-2">同步中...</span>
+      </div>
+      <div class="flex gap-2">
+        <button onclick="openTagModal()" class="bg-[#181f30] hover:bg-slate-700 border border-slate-700/60 text-xs px-3 py-1.5 rounded-xl text-slate-300 font-medium transition">
+          🏷️ 管理科目
+        </button>
+        <button onclick="openHabitModal()" class="bg-indigo-600 hover:bg-indigo-500 text-xs px-3 py-1.5 rounded-xl text-white font-medium transition shadow-lg shadow-indigo-600/30">
+          + 新增習慣
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-2xl mx-auto p-4 space-y-8">
+
+    <!-- 1. 專注計時器 (真實時間戳計算) -->
+    <section id="timerSection" class="bg-[#121826] border border-slate-800 rounded-3xl p-6 shadow-2xl transition-all">
+      <div class="flex flex-wrap justify-between items-center gap-3 mb-4">
+        <div class="flex gap-1.5 p-1 bg-[#1a2336] rounded-xl border border-slate-700/40">
+          <button id="modeStopwatchBtn" onclick="switchTimerMode('stopwatch')" class="px-3 py-1 rounded-lg text-xs font-semibold bg-indigo-600 text-white transition">正數 (從 0)</button>
+          <button id="modeCountdownBtn" onclick="switchTimerMode('countdown')" class="px-3 py-1 rounded-lg text-xs font-semibold text-slate-400 hover:text-white transition">倒數計時</button>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <span class="text-xs text-slate-400">科目:</span>
+          <select id="timerTagSelect" class="bg-[#1a2336] border border-slate-700/60 text-xs px-3 py-1.5 rounded-xl text-slate-200 focus:outline-none cursor-pointer">
+          </select>
+        </div>
+      </div>
+
+      <div id="activeTaskBanner" class="hidden mb-3 px-3 py-2 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex justify-between items-center">
+        <span>正在執行任務: <strong id="activeTaskTitle"></strong></span>
+        <button onclick="clearActiveTask()" class="text-slate-400 hover:text-white text-[11px]">✕ 取消綁定</button>
+      </div>
+
+      <div id="countdownSettings" class="hidden flex flex-wrap items-center justify-center gap-2 mb-4 bg-[#182032] p-2.5 rounded-2xl border border-slate-800">
+        <span class="text-xs text-slate-400">時長:</span>
+        <button onclick="setCountdownMinutes(15)" class="px-2.5 py-1 bg-[#202b42] hover:bg-slate-700 text-xs rounded-lg text-slate-300">15分</button>
+        <button onclick="setCountdownMinutes(25)" class="px-2.5 py-1 bg-[#202b42] hover:bg-slate-700 text-xs rounded-lg text-amber-400 border border-amber-500/30 font-medium">25分</button>
+        <button onclick="setCountdownMinutes(45)" class="px-2.5 py-1 bg-[#202b42] hover:bg-slate-700 text-xs rounded-lg text-slate-300">45分</button>
+        <button onclick="setCountdownMinutes(60)" class="px-2.5 py-1 bg-[#202b42] hover:bg-slate-700 text-xs rounded-lg text-slate-300">60分</button>
+        
+        <div class="flex items-center gap-1 ml-2">
+          <input id="customMinutesInput" type="number" min="1" max="300" placeholder="自訂" class="w-16 bg-[#202b42] border border-slate-700 text-xs px-2 py-1 rounded-lg text-center text-white focus:outline-none" />
+          <span class="text-xs text-slate-400">分</span>
+          <button onclick="applyCustomMinutes()" class="bg-indigo-600 hover:bg-indigo-500 text-[11px] px-2.5 py-1 rounded-lg text-white font-medium">套用</button>
+        </div>
+      </div>
+
+      <div class="text-center py-4">
+        <div id="timerDisplay" class="text-5xl font-mono font-bold tracking-tight text-white drop-shadow">00:00:00</div>
+      </div>
+
+      <div class="flex justify-center gap-4 mt-2">
+        <button id="timerToggleBtn" onclick="toggleTimer()" class="w-32 bg-indigo-600 hover:bg-indigo-500 py-2.5 rounded-xl font-medium text-sm transition shadow-lg shadow-indigo-600/30">開始</button>
+        <button onclick="resetTimer()" class="px-4 py-2.5 bg-[#1a2336] hover:bg-slate-700 rounded-xl text-slate-300 text-sm transition">重置</button>
+      </div>
+    </section>
+
+    <!-- 2. 習慣追蹤 -->
+    <section>
+      <div class="flex justify-between items-center mb-3">
+        <div>
+          <h2 class="text-sm font-bold text-white tracking-wide">習慣追蹤 (Habit Pixels & Streaks)</h2>
+          <p class="text-xs text-slate-400">紀錄每日連續堅持天數，點擊方格補卡或取消</p>
+        </div>
+      </div>
+      <div id="habitList" class="space-y-4">
+        <div class="text-center py-8 text-xs text-slate-500">載入中...</div>
+      </div>
+    </section>
+
+    <!-- 3. 分析圖表專區 -->
+    <section class="bg-[#121826] border border-slate-800 rounded-3xl p-6 shadow-2xl space-y-6">
+      <div class="flex justify-between items-center border-b border-slate-800/80 pb-3">
+        <div>
+          <h2 class="text-sm font-bold text-white tracking-wide flex items-center gap-1.5">
+            <span>📊</span> 專注數據與習慣分析 (Insights)
+          </h2>
+          <p class="text-xs text-slate-400 mt-0.5">時間流向、黃金專注時段與習慣養成率分析</p>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div class="bg-[#182032] p-3 rounded-2xl border border-slate-700/50">
+          <div class="text-[11px] text-slate-400">歷史總專注</div>
+          <div id="statTotalFocus" class="text-lg font-bold text-white font-mono mt-1">0h 0m</div>
+        </div>
+        <div class="bg-[#182032] p-3 rounded-2xl border border-slate-700/50">
+          <div class="text-[11px] text-slate-400">日均專注時長</div>
+          <div id="statDailyAvg" class="text-lg font-bold text-emerald-400 font-mono mt-1">0h 0m</div>
+        </div>
+        <div class="bg-[#182032] p-3 rounded-2xl border border-slate-700/50">
+          <div class="text-[11px] text-slate-400">總記錄時段</div>
+          <div id="statTotalSessions" class="text-lg font-bold text-indigo-400 font-mono mt-1">0 次</div>
+        </div>
+        <div class="bg-[#182032] p-3 rounded-2xl border border-slate-700/50">
+          <div class="text-[11px] text-slate-400">最高連續紀錄</div>
+          <div id="statBestStreak" class="text-lg font-bold text-amber-400 font-mono mt-1">0 天</div>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-5 pt-2">
+        <div class="bg-[#0c101a] p-4 rounded-2xl border border-slate-800/80">
+          <h3 class="text-xs font-semibold text-slate-300 mb-3">📈 最近 7 天專注時長走勢 (小時)</h3>
+          <div class="relative h-48 w-full">
+            <canvas id="trendChart"></canvas>
+          </div>
+        </div>
+
+        <div class="bg-[#0c101a] p-4 rounded-2xl border border-slate-800/80">
+          <div class="flex justify-between items-center mb-3">
+            <h3 class="text-xs font-semibold text-slate-300">🍰 各科目專注時間佔比</h3>
+            <div class="flex gap-1 bg-[#1a2336] p-1 rounded-xl text-[10px]">
+              <button id="pieRangeToday" onclick="changePieRange('today')" class="px-2 py-0.5 rounded-lg text-slate-400 transition">今天</button>
+              <button id="pieRangeWeek" onclick="changePieRange('week')" class="px-2 py-0.5 rounded-lg bg-indigo-600 text-white font-medium transition">本週</button>
+              <button id="pieRangeMonth" onclick="changePieRange('month')" class="px-2 py-0.5 rounded-lg text-slate-400 transition">本月</button>
+            </div>
+          </div>
+          <div class="relative h-48 w-full flex items-center justify-center">
+            <canvas id="subjectPieChart"></canvas>
+          </div>
+        </div>
+
+        <div class="bg-[#0c101a] p-4 rounded-2xl border border-slate-800/80">
+          <div class="flex justify-between items-center mb-3">
+            <h3 class="text-xs font-semibold text-slate-300">⏰ 24 小時心流時段分佈 (分鐘)</h3>
+            <div class="flex gap-1 bg-[#1a2336] p-1 rounded-xl text-[10px]">
+              <button id="hourlyRangeToday" onclick="changeHourlyRange('today')" class="px-2 py-0.5 rounded-lg text-slate-400 transition">今天</button>
+              <button id="hourlyRangeWeek" onclick="changeHourlyRange('week')" class="px-2 py-0.5 rounded-lg bg-indigo-600 text-white font-medium transition">本週</button>
+              <button id="hourlyRangeMonth" onclick="changeHourlyRange('month')" class="px-2 py-0.5 rounded-lg text-slate-400 transition">本月</button>
+            </div>
+          </div>
+          <div class="relative h-48 w-full">
+            <canvas id="hourlyChart"></canvas>
+          </div>
+        </div>
+
+        <div class="bg-[#0c101a] p-4 rounded-2xl border border-slate-800/80">
+          <h3 class="text-xs font-semibold text-slate-300 mb-3">🔥 習慣達成率排行 (近 30 天 %)</h3>
+          <div class="relative h-48 w-full">
+            <canvas id="habitRateChart"></canvas>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 4. 自製行事曆與專注熱力階層 -->
+    <section class="bg-[#121826] border border-slate-800 rounded-3xl p-6 shadow-2xl">
+      <div class="flex flex-wrap justify-between items-center gap-2 mb-4">
+        <div>
+          <h2 class="text-sm font-semibold text-slate-200">專注與活動行事曆</h2>
+          <div class="flex flex-wrap items-center gap-2 mt-2 text-[11px] text-slate-400 bg-[#182032] px-3 py-1.5 rounded-xl border border-slate-800">
+            <span class="text-slate-300 font-medium">專注階層:</span>
+            <div class="flex items-center gap-1"><div class="w-3 h-3 rounded-sm bg-[#1e222d] border border-slate-700"></div><span>0h</span></div>
+            <div class="flex items-center gap-1"><div class="w-3 h-3 rounded-sm bg-[#064e3b]"></div><span>&lt; 1h</span></div>
+            <div class="flex items-center gap-1"><div class="w-3 h-3 rounded-sm bg-[#047857]"></div><span>1 - 2.5h</span></div>
+            <div class="flex items-center gap-1"><div class="w-3 h-3 rounded-sm bg-[#10b981]"></div><span>2.5 - 4.5h</span></div>
+            <div class="flex items-center gap-1"><div class="w-3 h-3 rounded-sm bg-[#34d399]"></div><span>&gt; 4.5h</span></div>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-2 mt-2 sm:mt-0">
+          <div class="flex bg-[#1a2336] rounded-xl p-1 text-xs">
+            <button id="viewMonthBtn" onclick="changeCalendarView('month')" class="px-2.5 py-1 rounded-lg bg-indigo-600 text-white font-medium">月</button>
+            <button id="viewWeekBtn" onclick="changeCalendarView('week')" class="px-2.5 py-1 rounded-lg text-slate-400">週</button>
+            <button id="viewDayBtn" onclick="changeCalendarView('day')" class="px-2.5 py-1 rounded-lg text-slate-400">日</button>
+          </div>
+          <button onclick="openTimeblockModal(null)" class="bg-emerald-600 hover:bg-emerald-500 text-xs px-2.5 py-1.5 rounded-lg text-white font-medium shadow">+ 補登時段</button>
+          <button onclick="openEventModal()" class="bg-indigo-600 hover:bg-indigo-500 text-xs px-2.5 py-1.5 rounded-lg text-white font-medium shadow">+ 排程</button>
+        </div>
+      </div>
+
+      <div class="flex justify-between items-center py-2 text-sm text-slate-300 border-b border-slate-800 mb-3">
+        <button onclick="prevPeriod()" class="p-1 hover:text-white">&larr; 上一個</button>
+        <span id="calendarTitle" class="font-semibold text-white"></span>
+        <button onclick="nextPeriod()" class="p-1 hover:text-white">下一個 &rarr;</button>
+      </div>
+
+      <div id="calendarContainer"></div>
+    </section>
+
+  </main>
+
+  <!-- Modal: 日期詳情 -->
+  <div id="dayDetailModal" class="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-[#121826] border border-slate-800 w-full max-w-md rounded-3xl p-6 space-y-5 shadow-2xl max-h-[90vh] overflow-y-auto">
+      <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+        <div>
+          <h3 id="dayDetailDateTitle" class="font-bold text-white text-base">2026-09-29</h3>
+          <p id="dayDetailTotalTime" class="text-xs text-emerald-400 font-medium mt-0.5">總專注時長：0 小時</p>
+        </div>
+        <button onclick="closeDayDetailModal()" class="text-slate-400 hover:text-white text-lg">✕</button>
+      </div>
+
+      <div>
+        <div class="flex justify-between items-center mb-2">
+          <h4 class="text-xs font-semibold text-slate-300 uppercase tracking-wider">⏱ 專注時段記錄 (點擊編輯修改)</h4>
+          <button id="dayDetailAddTbBtn" class="text-xs text-emerald-400 hover:text-emerald-300 font-medium">+ 補登時段</button>
+        </div>
+        <div id="dayDetailTimeBlocks" class="space-y-2"></div>
+      </div>
+
+      <div>
+        <h4 class="text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2.5">📊 各科目專注時長</h4>
+        <div id="dayDetailSubjectStats" class="space-y-2"></div>
+      </div>
+
+      <div>
+        <div class="flex justify-between items-center mb-2">
+          <h4 class="text-xs font-semibold text-slate-300 uppercase tracking-wider">📅 當日排程事項</h4>
+          <button id="dayDetailAddEventBtn" class="text-xs text-indigo-400 hover:text-indigo-300 font-medium">+ 新增排程</button>
+        </div>
+        <div id="dayDetailEventList" class="space-y-2 max-h-48 overflow-y-auto pr-1"></div>
+      </div>
+
+      <div class="pt-2 text-right">
+        <button onclick="closeDayDetailModal()" class="px-5 py-2 rounded-xl bg-[#1e222d] hover:bg-slate-700 text-xs text-slate-300">關閉</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: 新增 / 修改專注時段 -->
+  <div id="timeblockModal" class="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-[#121826] border border-slate-800 w-full max-w-sm rounded-3xl p-5 space-y-4 shadow-2xl">
+      <h3 id="tbModalTitle" class="font-bold text-white text-base">修改專注使用時間</h3>
+      <input type="hidden" id="editTbId" />
+      
+      <div>
+        <label class="block text-xs text-slate-400 mb-1">記錄日期</label>
+        <input id="tbDateInput" type="date" class="w-full bg-[#1a2336] border border-slate-700 rounded-xl p-2 text-sm text-white focus:outline-none cursor-pointer" />
+      </div>
+
+      <div>
+        <label class="block text-xs text-slate-400 mb-1">任務 / 內容名稱</label>
+        <input id="tbTaskInput" type="text" placeholder="例: 專案開發、刷題、閱讀" class="w-full bg-[#1a2336] border border-slate-700 rounded-xl p-2 text-sm text-white focus:outline-none" />
+      </div>
+
+      <div>
+        <label class="block text-xs text-slate-400 mb-1">科目分類</label>
+        <select id="tbSubjectSelect" class="w-full bg-[#1a2336] border border-slate-700 rounded-xl p-2 text-sm text-white focus:outline-none cursor-pointer">
+        </select>
+      </div>
+
+      <div class="grid grid-cols-2 gap-2">
+        <div>
+          <label class="block text-xs text-slate-400 mb-1">開始時間</label>
+          <input id="tbStartInput" type="time" value="09:00" class="w-full bg-[#1a2336] border border-slate-700 rounded-xl p-2 text-sm text-white focus:outline-none" />
+        </div>
+        <div>
+          <label class="block text-xs text-slate-400 mb-1">結束時間</label>
+          <input id="tbEndInput" type="time" value="10:00" class="w-full bg-[#1a2336] border border-slate-700 rounded-xl p-2 text-sm text-white focus:outline-none" />
+        </div>
+      </div>
+
+      <div class="flex justify-between items-center pt-2">
+        <button id="deleteTbBtn" onclick="onDeleteCurrentTimeBlock()" class="text-rose-400 hover:text-rose-300 text-xs hidden">刪除此紀錄</button>
+        <div class="flex gap-2 ml-auto">
+          <button onclick="closeTimeblockModal()" class="px-3.5 py-1.5 rounded-xl bg-slate-800 text-xs text-slate-300">取消</button>
+          <button onclick="onSaveTimeblock()" class="px-5 py-1.5 rounded-xl bg-emerald-600 text-xs font-semibold text-white">儲存</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: 科目標籤管理 -->
+  <div id="tagModal" class="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-[#121826] border border-slate-800 w-full max-w-sm rounded-3xl p-5 space-y-4 shadow-2xl">
+      <div class="flex justify-between items-center">
+        <h3 class="font-bold text-white text-base">科目清單管理</h3>
+        <button onclick="closeTagModal()" class="text-slate-400 hover:text-white text-sm">✕</button>
+      </div>
+      <div class="flex gap-2">
+        <input type="hidden" id="editingTagId" />
+        <input id="tagNameInput" type="text" placeholder="輸入科目 (例: 專案、國文)" class="flex-1 bg-[#1a2336] border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none" />
+        <button id="tagSaveBtn" onclick="onSaveTag()" class="bg-indigo-600 hover:bg-indigo-500 text-xs px-3.5 py-1.5 rounded-xl font-medium text-white">新增</button>
+        <button id="tagCancelEditBtn" onclick="cancelTagEdit()" class="hidden bg-slate-700 text-xs px-2.5 py-1.5 rounded-xl text-slate-300">取消</button>
+      </div>
+      <div class="space-y-2 max-h-52 overflow-y-auto pr-1">
+        <div class="text-[11px] text-slate-400">現有科目：</div>
+        <div id="tagListDisplay" class="space-y-1.5"></div>
+      </div>
+      <div class="pt-2 text-right">
+        <button onclick="closeTagModal()" class="px-4 py-1.5 rounded-xl bg-[#1e222d] text-xs text-slate-300">完成關閉</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: 新增 / 編輯活動排程 -->
+  <div id="eventModal" class="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-[#121826] border border-slate-800 w-full max-w-sm rounded-3xl p-5 space-y-4 shadow-2xl">
+      <h3 id="eventModalTitle" class="font-bold text-white text-base">新增排程事項</h3>
+      <input type="hidden" id="editEventId" />
+
+      <div>
+        <label class="block text-xs text-slate-400 mb-1.5">排程類型</label>
+        <div class="grid grid-cols-2 gap-2">
+          <label class="flex items-center gap-2 p-2 bg-[#1a2336] rounded-xl border border-slate-700 cursor-pointer text-xs">
+            <input type="radio" name="eventType" value="regular" checked class="text-indigo-600" />
+            <div>
+              <div class="font-medium text-white">預定行程</div>
+              <div class="text-[10px] text-slate-400">僅作提醒，不記時</div>
+            </div>
+          </label>
+          <label class="flex items-center gap-2 p-2 bg-[#1a2336] rounded-xl border border-slate-700 cursor-pointer text-xs">
+            <input type="radio" name="eventType" value="timed" class="text-amber-500" />
+            <div>
+              <div class="font-medium text-amber-300">專注計時任務</div>
+              <div class="text-[10px] text-slate-400">按開始鍵，計時累計</div>
+            </div>
+          </label>
+        </div>
+      </div>
+
+      <div>
+        <label class="block text-xs text-slate-400 mb-1">活動 / 任務名稱</label>
+        <input id="eventTitleInput" type="text" placeholder="例: 數學模擬題、讀英文" class="w-full bg-[#1a2336] border border-slate-700 rounded-xl p-2.5 text-sm text-white focus:outline-none" />
+      </div>
+
+      <div>
+        <label class="block text-xs text-slate-400 mb-1">日期</label>
+        <input id="eventDateInput" type="date" class="w-full bg-[#1a2336] border border-slate-700 rounded-xl p-2 text-sm text-white focus:outline-none cursor-pointer" />
+      </div>
+
+      <div>
+        <div class="flex justify-between items-center mb-1">
+          <label class="text-xs text-slate-400">時間範圍</label>
+          <label class="flex items-center gap-1.5 text-xs text-slate-400 cursor-pointer">
+            <input type="checkbox" id="allDayCheckbox" onchange="toggleAllDay(this.checked)" class="rounded text-indigo-600 focus:ring-0" />
+            <span>全天 / 不指定時間</span>
+          </label>
+        </div>
+        <div id="timeInputsRow" class="grid grid-cols-2 gap-2">
+          <div>
+            <span class="block text-[10px] text-slate-400 mb-0.5">開始時間</span>
+            <input id="eventStartInput" type="time" step="60" value="09:00" class="w-full bg-[#1a2336] border border-slate-700 rounded-xl p-2 text-sm text-white focus:outline-none cursor-pointer" />
+          </div>
+          <div>
+            <span class="block text-[10px] text-slate-400 mb-0.5">結束時間</span>
+            <input id="eventEndInput" type="time" step="60" value="10:00" class="w-full bg-[#1a2336] border border-slate-700 rounded-xl p-2 text-sm text-white focus:outline-none cursor-pointer" />
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <label class="block text-xs text-slate-400 mb-1">備註</label>
+        <input id="eventNoteInput" type="text" placeholder="選填細節" class="w-full bg-[#1a2336] border border-slate-700 rounded-xl p-2 text-sm text-white focus:outline-none" />
+      </div>
+
+      <div class="flex justify-between items-center pt-2">
+        <button id="deleteEventBtn" onclick="onDeleteEvent()" class="text-rose-400 hover:text-rose-300 text-xs hidden">刪除</button>
+        <div class="flex gap-2 ml-auto">
+          <button onclick="closeEventModal()" class="px-3.5 py-2 rounded-xl bg-slate-800 text-xs text-slate-300 hover:bg-slate-700">取消</button>
+          <button onclick="onSaveEvent()" class="px-5 py-2 rounded-xl bg-emerald-600 text-xs font-semibold text-white hover:bg-emerald-500 shadow">儲存</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: 新增 / 編輯習慣 -->
+  <div id="habitModal" class="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-[#121826] border border-slate-800 w-full max-w-sm rounded-3xl p-6 space-y-4 shadow-2xl">
+      <h3 id="habitModalTitle" class="font-bold text-white text-base">新增習慣</h3>
+      <input type="hidden" id="editHabitId" />
+      <div>
+        <label class="block text-xs text-slate-400 mb-1">習慣名稱</label>
+        <input id="habitTitleInput" type="text" placeholder="例如: 冥想、讀書、慢跑" class="w-full bg-[#1a2336] border border-slate-700 rounded-xl p-2 text-sm text-white focus:outline-none" />
+      </div>
+      <div>
+        <label class="block text-xs text-slate-400 mb-1">目標說明</label>
+        <input id="habitDescInput" type="text" placeholder="例如: 每天堅持 15 分鐘" class="w-full bg-[#1a2336] border border-slate-700 rounded-xl p-2 text-sm text-white focus:outline-none" />
+      </div>
+
+      <div>
+        <label class="block text-xs text-slate-400 mb-1.5">像素主題色</label>
+        <div class="flex items-center gap-2 mb-2">
+          <button type="button" onclick="selectPaletteColor('#f43f5e')" class="w-6 h-6 rounded-md bg-[#f43f5e] ring-1 ring-white/20"></button>
+          <button type="button" onclick="selectPaletteColor('#ec4899')" class="w-6 h-6 rounded-md bg-[#ec4899] ring-1 ring-white/20"></button>
+          <button type="button" onclick="selectPaletteColor('#c084fc')" class="w-6 h-6 rounded-md bg-[#c084fc] ring-1 ring-white/20"></button>
+          <button type="button" onclick="selectPaletteColor('#f59e0b')" class="w-6 h-6 rounded-md bg-[#f59e0b] ring-1 ring-white/20"></button>
+          <button type="button" onclick="selectPaletteColor('#38bdf8')" class="w-6 h-6 rounded-md bg-[#38bdf8] ring-1 ring-white/20"></button>
+          <button type="button" onclick="selectPaletteColor('#4ade80')" class="w-6 h-6 rounded-md bg-[#4ade80] ring-1 ring-white/20"></button>
+        </div>
+        <input id="habitColorInput" type="color" value="#c084fc" class="w-full h-9 bg-[#1a2336] border border-slate-700 rounded-xl cursor-pointer" />
+      </div>
+
+      <div class="flex justify-between items-center pt-2">
+        <button id="deleteHabitBtn" onclick="onDeleteHabit()" class="text-rose-400 hover:text-rose-300 text-xs hidden">刪除此習慣</button>
+        <div class="flex gap-2 ml-auto">
+          <button onclick="closeHabitModal()" class="px-3.5 py-1.5 rounded-xl bg-slate-800 text-xs text-slate-300">取消</button>
+          <button onclick="onSaveHabit()" class="px-5 py-1.5 rounded-xl bg-indigo-600 text-xs font-semibold text-white">儲存</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ⚠️ 請將此處替換為你部署的 GAS 網頁應用程式網址 (Web app URL)
+    const GAS_API_URL = "https://script.googleusercontent.com/macros/echo?user_content_key=AUkAhnQI9LdgpCA-uPgnHV3Sqon1pTau28Lsb_YLjDVvUysPfTq8ZlBlpiAWR0nG9eHXPrBUN7NSsMUg_mRtbR1G6cYhIKDfo4BCVef6aYUO5tuS53xFOyiVWlSLP-DRaW28Gpjqyb-JCz7CIdmP5V_j20Q-fpcXb7rxa8yfFUDL7ffkjLMt8DPzznkLwXaP2fEx4Y1O3O2mCpGrJlj5AlhOZi8sQPDL0ASO6pUfFFtYZDuyzoqkqqMIs6T8EDFP_rZC_2kZXPsZBFguPgxu13TJNhgpyEDcLA&lib=MhG6i1-BqqLB2sl-3eRAkELE8jt-r_prn";
+
+    let appData = {
+      habits: [],
+      logs: [],
+      timeBlocks: [],
+      events: [],
+      tags: [
+        { id: 'def_1', name: '專案' },
+        { id: 'def_2', name: '國文' },
+        { id: 'def_3', name: '數學' }
+      ]
+    };
+    
+    let timerMode = 'stopwatch';
+    let timerInterval = null;
+    let timerStartTimestamp = null;
+    let accumulatedSeconds = 0;
+    let countdownTarget = 25 * 60;
+    let boundTaskName = "";
+
+    let calendarView = 'month';
+    let currentDate = new Date();
+    let habitMonthOffset = 0;
+    let currentDetailDateStr = "";
+
+    let currentPieRange = 'week';
+    let currentHourlyRange = 'week';
+
+    let trendChartInstance = null;
+    let subjectPieInstance = null;
+    let hourlyChartInstance = null;
+    let habitRateChartInstance = null;
+
+    const monthNamesZh = ["一月", "二月", "三月", "四月", "五月", "六月", "七月", "八月", "九月", "十月", "十一月", "十二月"];
+
+    function showLoading(show = true) {
+      const el = document.getElementById('loadingIndicator');
+      if (el) el.classList.toggle('hidden', !show);
+    }
+
+    // 封裝通用 API 呼叫函式
+    async function callApi(action, payload = {}) {
+      if (GAS_API_URL.includes("你的_GAS_DEPLOYMENT_ID")) {
+        console.warn("尚未填入正確的 GAS_API_URL");
+        return null;
+      }
+      showLoading(true);
+      try {
+        const response = await fetch(GAS_API_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'text/plain;charset=utf-8' // 避免 CORS preflight 觸發 OPTION 阻擋
+          },
+          body: JSON.stringify({ action, payload })
+        });
+        return await response.json();
+      } catch (err) {
+        console.error(`API [${action}] 失敗:`, err);
+      } finally {
+        showLoading(false);
+      }
+    }
+
+    function getLocalDateString(dateObj = new Date()) {
+      const year = dateObj.getFullYear();
+      const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+      const day = String(dateObj.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
+
+    function getLocalTimeString(dateObj = new Date()) {
+      const hrs = String(dateObj.getHours()).padStart(2, '0');
+      const mins = String(dateObj.getMinutes()).padStart(2, '0');
+      return `${hrs}:${mins}`;
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      renderTags();
+      renderHabits();
+      renderCalendar();
+      fetchData();
+    });
+
+    async function fetchData() {
+      if (GAS_API_URL.includes("你的_GAS_DEPLOYMENT_ID")) {
+        renderTags();
+        renderHabits();
+        renderCalendar();
+        renderInsightsCharts();
+        return;
+      }
+      showLoading(true);
+      try {
+        const res = await fetch(GAS_API_URL);
+        const data = await res.json();
+        if (data) {
+          appData = data;
+          renderTags();
+          renderHabits();
+          renderCalendar();
+          renderInsightsCharts();
+        }
+      } catch (err) {
+        console.warn("載入資料失敗:", err);
+      } finally {
+        showLoading(false);
+      }
+    }
+
+    /* -------------------------------------------------------------
+       習慣 Streaks 計算
+    ------------------------------------------------------------- */
+    function calculateStreaks(habitId) {
+      const habitLogs = (appData.logs || [])
+        .filter(l => String(l.habitId) === String(habitId))
+        .map(l => l.date);
+      
+      const logSet = new Set(habitLogs);
+      const today = new Date();
+      const todayStr = getLocalDateString(today);
+      
+      const yesterday = new Date();
+      yesterday.setDate(today.getDate() - 1);
+      const yesterdayStr = getLocalDateString(yesterday);
+
+      let currentStreak = 0;
+      let checkDate = new Date();
+
+      if (!logSet.has(todayStr)) {
+        if (logSet.has(yesterdayStr)) {
+          checkDate = yesterday;
+        } else {
+          checkDate = null;
+        }
+      }
+
+      if (checkDate) {
+        while (true) {
+          const dStr = getLocalDateString(checkDate);
+          if (logSet.has(dStr)) {
+            currentStreak++;
+            checkDate.setDate(checkDate.getDate() - 1);
+          } else {
+            break;
+          }
+        }
+      }
+
+      let bestStreak = 0;
+      let tempStreak = 0;
+      for (let i = 180; i >= 0; i--) {
+        const d = new Date();
+        d.setDate(today.getDate() - i);
+        const dStr = getLocalDateString(d);
+        if (logSet.has(dStr)) {
+          tempStreak++;
+          if (tempStreak > bestStreak) bestStreak = tempStreak;
+        } else {
+          tempStreak = 0;
+        }
+      }
+
+      return { current: currentStreak, best: Math.max(bestStreak, currentStreak) };
+    }
+
+    function filterBlocksByRange(blocks, range) {
+      const now = new Date();
+      const todayStr = getLocalDateString(now);
+
+      if (range === 'today') {
+        return blocks.filter(b => b.date === todayStr);
+      } else if (range === 'week') {
+        const dayOfWeek = (now.getDay() + 6) % 7;
+        const startOfWeek = new Date(now);
+        startOfWeek.setDate(now.getDate() - dayOfWeek);
+        const startStr = getLocalDateString(startOfWeek);
+
+        const endOfWeek = new Date(startOfWeek);
+        endOfWeek.setDate(startOfWeek.getDate() + 6);
+        const endStr = getLocalDateString(endOfWeek);
+
+        return blocks.filter(b => b.date >= startStr && b.date <= endStr);
+      } else if (range === 'month') {
+        const monthPrefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+        return blocks.filter(b => b.date && b.date.startsWith(monthPrefix));
+      }
+      return blocks;
+    }
+
+    function changePieRange(range) {
+      currentPieRange = range;
+      ['today', 'week', 'month'].forEach(r => {
+        const btn = document.getElementById(`pieRange${r.charAt(0).toUpperCase() + r.slice(1)}`);
+        if (r === range) {
+          btn.className = "px-2 py-0.5 rounded-lg bg-indigo-600 text-white font-medium transition";
+        } else {
+          btn.className = "px-2 py-0.5 rounded-lg text-slate-400 transition";
+        }
+      });
+      renderPieChart();
+    }
+
+    function changeHourlyRange(range) {
+      currentHourlyRange = range;
+      ['today', 'week', 'month'].forEach(r => {
+        const btn = document.getElementById(`hourlyRange${r.charAt(0).toUpperCase() + r.slice(1)}`);
+        if (r === range) {
+          btn.className = "px-2 py-0.5 rounded-lg bg-indigo-600 text-white font-medium transition";
+        } else {
+          btn.className = "px-2 py-0.5 rounded-lg text-slate-400 transition";
+        }
+      });
+      renderHourlyChart();
+    }
+
+    /* -------------------------------------------------------------
+       圖表渲染
+    ------------------------------------------------------------- */
+    function renderInsightsCharts() {
+      const timeBlocks = appData.timeBlocks || [];
+      const habitLogs = appData.logs || [];
+
+      const totalSec = timeBlocks.reduce((sum, item) => sum + (item.duration || 0), 0);
+      const totalHours = Math.floor(totalSec / 3600);
+      const totalMins = Math.round((totalSec % 3600) / 60);
+      document.getElementById('statTotalFocus').innerText = `${totalHours}h ${totalMins}m`;
+      document.getElementById('statTotalSessions').innerText = `${timeBlocks.length} 次`;
+
+      const uniqueDays = new Set(timeBlocks.map(t => t.date)).size || 1;
+      const dailyAvgSec = Math.round(totalSec / uniqueDays);
+      document.getElementById('statDailyAvg').innerText = `${Math.floor(dailyAvgSec/3600)}h ${Math.round((dailyAvgSec%3600)/60)}m`;
+
+      let globalBestStreak = 0;
+      (appData.habits || []).forEach(h => {
+        const s = calculateStreaks(h.id);
+        if (s.best > globalBestStreak) globalBestStreak = s.best;
+      });
+      document.getElementById('statBestStreak').innerText = `${globalBestStreak} 天`;
+
+      const last7DaysLabels = [];
+      const last7DaysData = [];
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date();
+        d.setDate(d.getDate() - i);
+        const dStr = getLocalDateString(d);
+        last7DaysLabels.push(`${d.getMonth() + 1}/${d.getDate()}`);
+        
+        const daySumSec = timeBlocks.filter(t => t.date === dStr).reduce((s, it) => s + (it.duration || 0), 0);
+        last7DaysData.push(Number((daySumSec / 3600).toFixed(2)));
+      }
+
+      const trendCtx = document.getElementById('trendChart').getContext('2d');
+      if (trendChartInstance) trendChartInstance.destroy();
+      trendChartInstance = new Chart(trendCtx, {
+        type: 'bar',
+        data: {
+          labels: last7DaysLabels,
+          datasets: [{
+            label: '專注時長 (小時)',
+            data: last7DaysData,
+            backgroundColor: '#6366f1',
+            borderRadius: 6,
+            hoverBackgroundColor: '#818cf8'
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { ticks: { color: '#94a3b8', font: { size: 10 } }, grid: { display: false } },
+            y: { ticks: { color: '#94a3b8', font: { size: 10 } }, grid: { color: '#1e293b' }, beginAtZero: true }
+          }
+        }
+      });
+
+      renderPieChart();
+      renderHourlyChart();
+
+      const habitNames = [];
+      const habitRates = [];
+      const habitColors = [];
+
+      (appData.habits || []).forEach(h => {
+        let doneCount = 0;
+        for (let i = 29; i >= 0; i--) {
+          const d = new Date();
+          d.setDate(d.getDate() - i);
+          const dStr = getLocalDateString(d);
+          if (habitLogs.some(l => String(l.habitId) === String(h.id) && l.date === dStr)) {
+            doneCount++;
+          }
+        }
+        const rate = Math.round((doneCount / 30) * 100);
+        habitNames.push(h.title);
+        habitRates.push(rate);
+        habitColors.push(h.color || '#c084fc');
+      });
+
+      const habitRateCtx = document.getElementById('habitRateChart').getContext('2d');
+      if (habitRateChartInstance) habitRateChartInstance.destroy();
+      habitRateChartInstance = new Chart(habitRateCtx, {
+        type: 'bar',
+        data: {
+          labels: habitNames.length ? habitNames : ['暫無習慣'],
+          datasets: [{
+            label: '達成率 (%)',
+            data: habitRates.length ? habitRates : [0],
+            backgroundColor: habitColors.length ? habitColors : ['#6366f1'],
+            borderRadius: 6
+          }]
+        },
+        options: {
+          indexAxis: 'y',
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { max: 100, ticks: { color: '#94a3b8', font: { size: 10 } }, grid: { color: '#1e293b' } },
+            y: { ticks: { color: '#cbd5e1', font: { size: 10 } }, grid: { display: false } }
+          }
+        }
+      });
+    }
+
+    function renderPieChart() {
+      const filteredBlocks = filterBlocksByRange(appData.timeBlocks || [], currentPieRange);
+      const subjectMap = {};
+      filteredBlocks.forEach(b => {
+        const sub = b.subject || '未分類';
+        subjectMap[sub] = (subjectMap[sub] || 0) + (b.duration || 0);
+      });
+
+      const subLabels = Object.keys(subjectMap);
+      const subValues = subLabels.map(k => Math.round(subjectMap[k] / 60));
+
+      const pieCtx = document.getElementById('subjectPieChart').getContext('2d');
+      if (subjectPieInstance) subjectPieInstance.destroy();
+      subjectPieInstance = new Chart(pieCtx, {
+        type: 'doughnut',
+        data: {
+          labels: subLabels.length ? subLabels : ['暫無數據'],
+          datasets: [{
+            data: subValues.length ? subValues : [1],
+            backgroundColor: subValues.length ? ['#6366f1', '#10b981', '#f59e0b', '#ec4899', '#38bdf8', '#a855f7'] : ['#334155'],
+            borderWidth: 2,
+            borderColor: '#121826'
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { position: 'bottom', labels: { color: '#cbd5e1', font: { size: 10 }, boxWidth: 10 } },
+            tooltip: {
+              callbacks: {
+                label: function(context) {
+                  return `${context.label}: ${context.raw} 分鐘`;
+                }
+              }
+            }
+          }
+        }
+      });
+    }
+
+    function renderHourlyChart() {
+      const filteredBlocks = filterBlocksByRange(appData.timeBlocks || [], currentHourlyRange);
+      const hourBuckets = new Array(24).fill(0);
+
+      filteredBlocks.forEach(b => {
+        if (b.startTime) {
+          const hour = parseInt(b.startTime.split(':')[0], 10);
+          if (!isNaN(hour) && hour >= 0 && hour < 24) {
+            hourBuckets[hour] += Math.round((b.duration || 0) / 60);
+          }
+        }
+      });
+
+      const hourLabels = hourBuckets.map((_, h) => `${h}時`);
+      const hourlyCtx = document.getElementById('hourlyChart').getContext('2d');
+      if (hourlyChartInstance) hourlyChartInstance.destroy();
+      hourlyChartInstance = new Chart(hourlyCtx, {
+        type: 'line',
+        data: {
+          labels: hourLabels,
+          datasets: [{
+            label: '累計專注分鐘',
+            data: hourBuckets,
+            borderColor: '#38bdf8',
+            backgroundColor: 'rgba(56, 189, 248, 0.15)',
+            fill: true,
+            tension: 0.3,
+            pointRadius: 2
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { ticks: { color: '#94a3b8', font: { size: 9 }, maxTicksLimit: 12 }, grid: { display: false } },
+            y: { ticks: { color: '#94a3b8', font: { size: 10 } }, grid: { color: '#1e293b' }, beginAtZero: true }
+          }
+        }
+      });
+    }
+
+    /* -------------------------------------------------------------
+       習慣追蹤模組
+    ------------------------------------------------------------- */
+    function changeHabitMonth(delta) {
+      habitMonthOffset += delta;
+      renderHabits();
+    }
+
+    function renderHabits() {
+      const list = document.getElementById('habitList');
+      if (!list) return;
+      list.innerHTML = '';
+
+      if (!appData.habits || appData.habits.length === 0) {
+        list.innerHTML = `<div class="text-center py-8 bg-[#121826] border border-slate-800 rounded-3xl text-xs text-slate-400">目前尚無習慣，點擊上方「+ 新增習慣」即可建立！</div>`;
+        return;
+      }
+
+      const targetDate = new Date();
+      targetDate.setDate(1);
+      targetDate.setMonth(targetDate.getMonth() + habitMonthOffset);
+
+      const targetYear = targetDate.getFullYear();
+      const targetMonthIndex = targetDate.getMonth();
+      const monthNameZh = monthNamesZh[targetMonthIndex];
+      const todayStr = getLocalDateString(new Date());
+
+      const daysInMonth = new Date(targetYear, targetMonthIndex + 1, 0).getDate();
+      const firstDayRaw = new Date(targetYear, targetMonthIndex, 1).getDay();
+      const firstDayMondayBased = (firstDayRaw + 6) % 7;
+
+      const matrix = Array.from({ length: 7 }, () => []);
+      for (let r = 0; r < firstDayMondayBased; r++) {
+        matrix[r].push(null);
+      }
+
+      for (let day = 1; day <= daysInMonth; day++) {
+        const dObj = new Date(targetYear, targetMonthIndex, day);
+        const dayOfWeek = (dObj.getDay() + 6) % 7;
+        matrix[dayOfWeek].push({
+          day: day,
+          dateStr: `${targetYear}-${String(targetMonthIndex + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+        });
+      }
+
+      const totalColumns = Math.max(...matrix.map(row => row.length));
+      for (let r = 0; r < 7; r++) {
+        while (matrix[r].length < totalColumns) {
+          matrix[r].push(null);
+        }
+      }
+
+      let weekNumbersHeader = '';
+      for (let c = 1; c <= totalColumns; c++) {
+        weekNumbersHeader += `<div class="w-4 text-center text-[10px] text-slate-400 font-mono font-bold">${c}</div>`;
+      }
+
+      appData.habits.forEach(habit => {
+        const isDoneToday = appData.logs.some(l => String(l.habitId) === String(habit.id) && l.date === todayStr);
+        const habitColor = habit.color || '#c084fc';
+        const streaks = calculateStreaks(habit.id);
+
+        const weekDayNames = ['一', '二', '三', '四', '五', '六', '日'];
+        let rowsHtml = '';
+
+        for (let r = 0; r < 7; r++) {
+          let colsHtml = '';
+          for (let c = 0; c < totalColumns; c++) {
+            const cell = matrix[r][c];
+            if (!cell) {
+              colsHtml += `<div class="github-pixel empty-day"></div>`;
+            } else {
+              const isDone = appData.logs.some(l => String(l.habitId) === String(habit.id) && l.date === cell.dateStr);
+              const bgStyle = isDone 
+                ? `background-color: ${habitColor}; box-shadow: 0 0 6px ${habitColor}77;` 
+                : `background-color: #1e222d;`;
+              
+              colsHtml += `
+                <div class="github-pixel ${isDone ? 'active' : ''}" 
+                     style="${bgStyle}" 
+                     onclick="toggleCheck('${habit.id}', '${cell.dateStr}')"
+                     title="${cell.dateStr}: ${isDone ? '已完成' : '未完成'}">
+                </div>
+              `;
+            }
+          }
+
+          rowsHtml += `
+            <div class="flex items-center gap-2">
+              <span class="w-3 text-[9px] text-slate-400 text-center select-none font-medium">${weekDayNames[r]}</span>
+              <div class="flex gap-2">${colsHtml}</div>
+            </div>
+          `;
+        }
+
+        const card = document.createElement('div');
+        card.className = "bg-[#121826] border border-slate-800/90 rounded-3xl p-5 shadow-xl";
+        card.innerHTML = `
+          <div class="flex justify-between items-center mb-4">
+            <div>
+              <div class="flex items-center gap-2">
+                <div class="w-3 h-3 rounded-full" style="background-color: ${habitColor}; box-shadow: 0 0 8px ${habitColor}"></div>
+                <h3 class="font-bold text-base text-white tracking-wide">${habit.title}</h3>
+                <button onclick="openHabitModal('${habit.id}')" class="text-xs text-slate-500 hover:text-slate-300">✏️</button>
+              </div>
+              <div class="flex items-center gap-2 mt-1">
+                <span class="text-[11px] px-2 py-0.5 rounded-full bg-amber-950/70 border border-amber-600/50 text-amber-300 font-bold">
+                  🔥 連續 ${streaks.current} 天
+                </span>
+                <span class="text-[11px] text-slate-400">最佳 ${streaks.best} 天</span>
+              </div>
+            </div>
+
+            <button onclick="toggleCheck('${habit.id}', '${todayStr}')" 
+              class="w-10 h-10 rounded-2xl flex items-center justify-center font-black text-white text-base transition-all active:scale-95 shadow-lg"
+              style="background-color: ${isDoneToday ? habitColor : '#1e222d'}; border: 1.5px solid ${isDoneToday ? habitColor : '#2e384d'}; box-shadow: ${isDoneToday ? '0 0 12px ' + habitColor + '88' : 'none'}">
+              ✓
+            </button>
+          </div>
+
+          <div class="bg-[#0c101a] p-4 rounded-2xl border border-slate-800/60 inline-block w-full">
+            <div class="flex justify-between items-center mb-2.5 px-1 border-b border-slate-800/60 pb-2">
+              <span class="text-xs font-bold text-white tracking-wider">${monthNameZh} (${targetYear})</span>
+              <div class="flex items-center gap-1.5 text-xs text-slate-400">
+                <button onclick="changeHabitMonth(-1)" class="hover:text-white px-2 py-0.5 rounded bg-slate-800/60">&larr;</button>
+                <button onclick="habitMonthOffset=0; renderHabits();" class="hover:text-white px-2 py-0.5 rounded bg-slate-800/60 text-[10px]">本月</button>
+                <button onclick="changeHabitMonth(1)" class="hover:text-white px-2 py-0.5 rounded bg-slate-800/60">&rarr;</button>
+              </div>
+            </div>
+
+            <div class="flex items-center gap-2 mb-2">
+              <span class="w-3"></span>
+              <div class="flex gap-2">${weekNumbersHeader}</div>
+            </div>
+
+            <div class="space-y-2">
+              ${rowsHtml}
+            </div>
+          </div>
+        `;
+        list.appendChild(card);
+      });
+    }
+
+    function selectPaletteColor(color) {
+      document.getElementById('habitColorInput').value = color;
+    }
+
+    async function toggleCheck(habitId, dateStr) {
+      const idx = appData.logs.findIndex(l => String(l.habitId) === String(habitId) && l.date === dateStr);
+      if (idx >= 0) {
+        appData.logs.splice(idx, 1);
+      } else {
+        appData.logs.push({ date: dateStr, habitId: String(habitId), status: true });
+      }
+      renderHabits();
+      renderInsightsCharts();
+      await callApi('toggleHabit', { habitId, dateStr });
+    }
+
+    function openHabitModal(habitId = null) {
+      const modal = document.getElementById('habitModal');
+      const delBtn = document.getElementById('deleteHabitBtn');
+      document.getElementById('editHabitId').value = habitId || '';
+
+      if (habitId) {
+        const h = appData.habits.find(item => item.id === habitId);
+        document.getElementById('habitModalTitle').innerText = "編輯習慣";
+        document.getElementById('habitTitleInput').value = h.title;
+        document.getElementById('habitDescInput').value = h.desc || '';
+        document.getElementById('habitColorInput').value = h.color || '#c084fc';
+        delBtn.classList.remove('hidden');
+      } else {
+        document.getElementById('habitModalTitle').innerText = "新增習慣";
+        document.getElementById('habitTitleInput').value = '';
+        document.getElementById('habitDescInput').value = '';
+        document.getElementById('habitColorInput').value = '#c084fc';
+        delBtn.classList.add('hidden');
+      }
+      modal.classList.remove('hidden');
+    }
+
+    function closeHabitModal() {
+      document.getElementById('habitModal').classList.add('hidden');
+    }
+
+    async function onSaveHabit() {
+      const payload = {
+        id: document.getElementById('editHabitId').value,
+        title: document.getElementById('habitTitleInput').value.trim(),
+        desc: document.getElementById('habitDescInput').value.trim(),
+        color: document.getElementById('habitColorInput').value
+      };
+      if (!payload.title) return alert('請輸入習慣名稱');
+
+      closeHabitModal();
+      await callApi('saveOrUpdateHabit', payload);
+      fetchData();
+    }
+
+    async function onDeleteHabit() {
+      const id = document.getElementById('editHabitId').value;
+      if (confirm('確定要刪除此習慣嗎？')) {
+        closeHabitModal();
+        await callApi('deleteHabit', id);
+        fetchData();
+      }
+    }
+
+    /* -------------------------------------------------------------
+       科目標籤模組
+    ------------------------------------------------------------- */
+    function renderTags() {
+      const select = document.getElementById('timerTagSelect');
+      const tbSelect = document.getElementById('tbSubjectSelect');
+      const listDisplay = document.getElementById('tagListDisplay');
+      if (!select || !listDisplay) return;
+
+      select.innerHTML = '';
+      if (tbSelect) tbSelect.innerHTML = '';
+      listDisplay.innerHTML = '';
+
+      if (!appData.tags || appData.tags.length === 0) {
+        appData.tags = [
+          { id: 'def_1', name: '專案' },
+          { id: 'def_2', name: '國文' },
+          { id: 'def_3', name: '數學' }
+        ];
+      }
+
+      appData.tags.forEach(tag => {
+        const opt = document.createElement('option');
+        opt.value = tag.name;
+        opt.innerText = tag.name;
+        select.appendChild(opt);
+
+        if (tbSelect) {
+          const opt2 = document.createElement('option');
+          opt2.value = tag.name;
+          opt2.innerText = tag.name;
+          tbSelect.appendChild(opt2);
+        }
+
+        const row = document.createElement('div');
+        row.className = "flex justify-between items-center bg-[#1a2336] px-3 py-1.5 rounded-xl border border-slate-700/60 text-xs";
+        row.innerHTML = `
+          <span class="text-slate-200 font-medium">${tag.name}</span>
+          <div class="flex gap-2 text-[11px]">
+            <button onclick="startEditTag('${tag.id}', '${tag.name}')" class="text-indigo-400 hover:text-indigo-300">編輯</button>
+            <button onclick="onDeleteTag('${tag.id}')" class="text-rose-400 hover:text-rose-300">刪除</button>
+          </div>
+        `;
+        listDisplay.appendChild(row);
+      });
+    }
+
+    function openTagModal() {
+      cancelTagEdit();
+      document.getElementById('tagModal').classList.remove('hidden');
+    }
+
+    function closeTagModal() {
+      document.getElementById('tagModal').classList.add('hidden');
+    }
+
+    function startEditTag(id, name) {
+      document.getElementById('editingTagId').value = id;
+      const input = document.getElementById('tagNameInput');
+      input.value = name;
+      input.focus();
+      document.getElementById('tagSaveBtn').innerText = "更新";
+      document.getElementById('tagCancelEditBtn').classList.remove('hidden');
+    }
+
+    function cancelTagEdit() {
+      document.getElementById('editingTagId').value = '';
+      document.getElementById('tagNameInput').value = '';
+      document.getElementById('tagSaveBtn').innerText = "新增";
+      document.getElementById('tagCancelEditBtn').classList.add('hidden');
+    }
+
+    async function onSaveTag() {
+      const id = document.getElementById('editingTagId').value;
+      const name = document.getElementById('tagNameInput').value.trim();
+      if (!name) return alert('請輸入科目名稱');
+
+      cancelTagEdit();
+      await callApi('saveOrUpdateTag', { id, name });
+      fetchData();
+    }
+
+    async function onDeleteTag(tagId) {
+      if (confirm('確定要刪除此科目嗎？')) {
+        cancelTagEdit();
+        await callApi('deleteTag', tagId);
+        fetchData();
+      }
+    }
+
+    /* -------------------------------------------------------------
+       計時器模組
+    ------------------------------------------------------------- */
+    function switchTimerMode(mode) {
+      if (timerInterval) resetTimer();
+      timerMode = mode;
+      const swBtn = document.getElementById('modeStopwatchBtn');
+      const cdBtn = document.getElementById('modeCountdownBtn');
+      const cdSettings = document.getElementById('countdownSettings');
+
+      if (mode === 'stopwatch') {
+        swBtn.className = "px-3 py-1 rounded-lg text-xs font-semibold bg-indigo-600 text-white transition";
+        cdBtn.className = "px-3 py-1 rounded-lg text-xs font-semibold text-slate-400 hover:text-white transition";
+        cdSettings.classList.add('hidden');
+        updateTimerDisplay(0);
+      } else {
+        cdBtn.className = "px-3 py-1 rounded-lg text-xs font-semibold bg-indigo-600 text-white transition";
+        swBtn.className = "px-3 py-1 rounded-lg text-xs font-semibold text-slate-400 hover:text-white transition";
+        cdSettings.classList.remove('hidden');
+        updateTimerDisplay(countdownTarget);
+      }
+    }
+
+    function setCountdownMinutes(mins) {
+      if (timerInterval) resetTimer();
+      countdownTarget = mins * 60;
+      updateTimerDisplay(countdownTarget);
+    }
+
+    function applyCustomMinutes() {
+      const val = parseInt(document.getElementById('customMinutesInput').value, 10);
+      if (isNaN(val) || val <= 0) return alert('請輸入有效的分鐘數');
+      setCountdownMinutes(val);
+    }
+
+    function updateTimerDisplay(sec) {
+      const safeSec = Math.max(0, Math.floor(sec));
+      const h = String(Math.floor(safeSec / 3600)).padStart(2, '0');
+      const m = String(Math.floor((safeSec % 3600) / 60)).padStart(2, '0');
+      const s = String(safeSec % 60).padStart(2, '0');
+      document.getElementById('timerDisplay').innerText = `${h}:${m}:${s}`;
+    }
+
+    function startTimerFromEvent(title, subject = null) {
+      resetTimer();
+      boundTaskName = title;
+      document.getElementById('activeTaskTitle').innerText = title;
+      document.getElementById('activeTaskBanner').classList.remove('hidden');
+
+      if (subject) {
+        const select = document.getElementById('timerTagSelect');
+        for (let i = 0; i < select.options.length; i++) {
+          if (select.options[i].value === subject) {
+            select.selectedIndex = i;
+            break;
+          }
+        }
+      }
+
+      closeDayDetailModal();
+      document.getElementById('timerSection').scrollIntoView({ behavior: 'smooth' });
+      toggleTimer();
+    }
+
+    function clearActiveTask() {
+      boundTaskName = "";
+      document.getElementById('activeTaskBanner').classList.add('hidden');
+    }
+
+    function toggleTimer() {
+      const btn = document.getElementById('timerToggleBtn');
+      if (!timerInterval) {
+        btn.innerText = "完成 / 儲存";
+        btn.classList.replace('bg-indigo-600', 'bg-emerald-600');
+        
+        timerStartTimestamp = Date.now();
+
+        timerInterval = setInterval(() => {
+          const elapsed = (Date.now() - timerStartTimestamp) / 1000;
+          if (timerMode === 'stopwatch') {
+            const currentTotal = accumulatedSeconds + elapsed;
+            updateTimerDisplay(currentTotal);
+          } else {
+            const remaining = countdownTarget - (accumulatedSeconds + elapsed);
+            if (remaining <= 0) {
+              clearInterval(timerInterval);
+              timerInterval = null;
+              updateTimerDisplay(0);
+              alert('專注倒數完成！已為您記錄時長。');
+              saveTimerResult(countdownTarget);
+            } else {
+              updateTimerDisplay(remaining);
+            }
+          }
+        }, 200);
+      } else {
+        const elapsed = (Date.now() - timerStartTimestamp) / 1000;
+        accumulatedSeconds += elapsed;
+        clearInterval(timerInterval);
+        timerInterval = null;
+        
+        const finalSec = timerMode === 'stopwatch' ? accumulatedSeconds : Math.min(countdownTarget, accumulatedSeconds);
+        saveTimerResult(Math.round(finalSec));
+      }
+    }
+
+    async function saveTimerResult(sec) {
+      if (sec < 5) {
+        resetTimer();
+        clearActiveTask();
+        return;
+      }
+      const subject = document.getElementById('timerTagSelect').value || "未分類";
+      const taskLabel = boundTaskName ? boundTaskName : "專注學習";
+      const endTime = getLocalTimeString(new Date());
+      
+      const startDateObj = new Date(Date.now() - sec * 1000);
+      const startTime = getLocalTimeString(startDateObj);
+
+      const payload = {
+        date: getLocalDateString(new Date()),
+        subject: subject,
+        task: taskLabel,
+        durationSec: sec,
+        startTime: startTime,
+        endTime: endTime
+      };
+
+      resetTimer();
+      clearActiveTask();
+      await callApi('saveFocusSession', payload);
+      fetchData();
+    }
+
+    function resetTimer() {
+      clearInterval(timerInterval);
+      timerInterval = null;
+      accumulatedSeconds = 0;
+      timerStartTimestamp = null;
+      updateTimerDisplay(timerMode === 'stopwatch' ? 0 : countdownTarget);
+      const btn = document.getElementById('timerToggleBtn');
+      btn.innerText = "開始";
+      btn.classList.replace('bg-emerald-600', 'bg-indigo-600');
+    }
+
+    /* -------------------------------------------------------------
+       行事曆模組
+    ------------------------------------------------------------- */
+    function getFocusDurationForDate(dateStr) {
+      return (appData.timeBlocks || [])
+        .filter(t => t.date === dateStr)
+        .reduce((sum, item) => sum + (item.duration || 0), 0);
+    }
+
+    function getHeatmapColor(durationSec) {
+      const hours = durationSec / 3600;
+      if (hours === 0) return '#181b22';
+      if (hours < 1) return '#064e3b';
+      if (hours < 2.5) return '#047857';
+      if (hours < 4.5) return '#10b981';
+      return '#34d399';
+    }
+
+    function changeCalendarView(view) {
+      calendarView = view;
+      ['Month', 'Week', 'Day'].forEach(v => {
+        const btn = document.getElementById(`view${v}Btn`);
+        if (v.toLowerCase() === view) {
+          btn.className = "px-2.5 py-1 rounded-lg bg-indigo-600 text-white font-medium";
+        } else {
+          btn.className = "px-2.5 py-1 rounded-lg text-slate-400";
+        }
+      });
+      renderCalendar();
+    }
+
+    function prevPeriod() {
+      if (calendarView === 'month') currentDate.setMonth(currentDate.getMonth() - 1);
+      else if (calendarView === 'week') currentDate.setDate(currentDate.getDate() - 7);
+      else currentDate.setDate(currentDate.getDate() - 1);
+      renderCalendar();
+    }
+
+    function nextPeriod() {
+      if (calendarView === 'month') currentDate.setMonth(currentDate.getMonth() + 1);
+      else if (calendarView === 'week') currentDate.setDate(currentDate.getDate() + 7);
+      else currentDate.setDate(currentDate.getDate() + 1);
+      renderCalendar();
+    }
+
+    function renderCalendar() {
+      const container = document.getElementById('calendarContainer');
+      const title = document.getElementById('calendarTitle');
+      if (!container || !title) return;
+
+      if (calendarView === 'month') {
+        const year = currentDate.getFullYear();
+        const month = currentDate.getMonth();
+        title.innerText = `${year} 年 ${month + 1} 月`;
+
+        const firstDay = new Date(year, month, 1).getDay();
+        const totalDays = new Date(year, month + 1, 0).getDate();
+
+        let html = `
+          <div class="grid grid-cols-7 gap-1 text-center text-[11px] text-slate-500 mb-1">
+            <span>日</span><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span>
+          </div>
+          <div class="grid grid-cols-7 gap-1">
+        `;
+
+        for (let i = 0; i < firstDay; i++) {
+          html += `<div class="h-24 bg-[#0c101a] rounded-xl border border-slate-900/60"></div>`;
+        }
+
+        for (let day = 1; day <= totalDays; day++) {
+          const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+          const durSec = getFocusDurationForDate(dateStr);
+          const heatBg = getHeatmapColor(durSec);
+          const dayEvents = (appData.events || []).filter(e => e.date === dateStr);
+
+          html += `
+            <div class="h-24 p-1.5 rounded-xl border border-slate-800/80 flex flex-col justify-between cursor-pointer hover:border-indigo-500 transition"
+                 style="background-color: ${heatBg}" onclick="openDayDetailModal('${dateStr}')">
+              <div class="flex justify-between items-center text-[10px]">
+                <span class="font-bold text-slate-200">${day}</span>
+                ${durSec > 0 ? `<span class="text-[9px] text-emerald-200 font-medium">${(durSec/3600).toFixed(1)}h</span>` : ''}
+              </div>
+              <div class="space-y-1 overflow-hidden">
+                ${dayEvents.slice(0, 2).map(e => `
+                  <div onclick="event.stopPropagation(); openEventModal('${e.id}')" class="truncate text-[9px] px-1 py-0.5 rounded ${e.type === 'timed' ? 'bg-amber-950/70 border border-amber-600/50 text-amber-200' : 'bg-slate-900/80 border border-slate-700 text-slate-200'}">
+                    ${e.type === 'timed' ? '⏱ ' : '📅 '}${e.startTime ? e.startTime + ' ' : ''}${e.title}
+                  </div>
+                `).join('')}
+                ${dayEvents.length > 2 ? `<div class="text-[8px] text-slate-300 font-bold">+${dayEvents.length - 2}</div>` : ''}
+              </div>
+            </div>
+          `;
+        }
+        html += `</div>`;
+        container.innerHTML = html;
+
+      } else if (calendarView === 'week') {
+        const startOfWeek = new Date(currentDate);
+        startOfWeek.setDate(currentDate.getDate() - currentDate.getDay());
+        title.innerText = `${getLocalDateString(startOfWeek)} 當週排程`;
+
+        let html = `<div class="grid grid-cols-7 gap-1.5">`;
+        for (let i = 0; i < 7; i++) {
+          const d = new Date(startOfWeek);
+          d.setDate(startOfWeek.getDate() + i);
+          const dateStr = getLocalDateString(d);
+          const durSec = getFocusDurationForDate(dateStr);
+          const heatBg = getHeatmapColor(durSec);
+          const dayEvents = (appData.events || []).filter(e => e.date === dateStr);
+
+          html += `
+            <div class="p-2 rounded-2xl border border-slate-800 flex flex-col min-h-[180px] cursor-pointer hover:border-indigo-500 transition"
+                 style="background-color: ${heatBg}" onclick="openDayDetailModal('${dateStr}')">
+              <div class="text-center border-b border-slate-700/60 pb-1 mb-2">
+                <div class="text-[10px] text-slate-300">週${['日','一','二','三','四','五','六'][i]}</div>
+                <div class="font-bold text-xs text-white">${d.getDate()}</div>
+                <div class="text-[9px] text-emerald-300 font-medium">${(durSec/3600).toFixed(1)}h 專注</div>
+              </div>
+              <div class="space-y-1.5 flex-1 overflow-y-auto">
+                ${dayEvents.map(e => `
+                  <div onclick="event.stopPropagation(); openEventModal('${e.id}')" class="p-1.5 rounded-lg border text-[10px] ${e.type === 'timed' ? 'bg-amber-950/80 border-amber-600/60 text-amber-200' : 'bg-slate-900/90 border-slate-700 text-slate-200'}">
+                    <div class="font-semibold truncate">${e.type === 'timed' ? '⏱ ' : '📅 '}${e.title}</div>
+                    <div class="text-[9px] text-slate-400 mt-0.5">${e.startTime ? (e.startTime + (e.endTime ? ' - ' + e.endTime : '')) : '全天'}</div>
+                    ${e.type === 'timed' ? `
+                      <button onclick="event.stopPropagation(); startTimerFromEvent('${e.title}')" class="mt-1 w-full bg-amber-600 hover:bg-amber-500 text-white rounded text-[9px] py-0.5 font-bold transition">▶ 開始計時</button>
+                    ` : ''}
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+          `;
+        }
+        html += `</div>`;
+        container.innerHTML = html;
+
+      } else if (calendarView === 'day') {
+        const dateStr = getLocalDateString(currentDate);
+        title.innerText = `${dateStr} 今日時刻表`;
+        const durSec = getFocusDurationForDate(dateStr);
+        const dayBlocks = (appData.timeBlocks || []).filter(t => t.date === dateStr);
+        const dayEvents = (appData.events || []).filter(e => e.date === dateStr);
+
+        let html = `
+          <div class="p-4 rounded-3xl border border-slate-800 mb-4 flex justify-between items-center cursor-pointer hover:border-indigo-500 transition" 
+               style="background-color: ${getHeatmapColor(durSec)}" onclick="openDayDetailModal('${dateStr}')">
+            <div>
+              <div class="text-xs text-slate-300">今日總專注時長 (點擊檢視科目明細)</div>
+              <div class="text-2xl font-bold text-white">${(durSec/3600).toFixed(2)} 小時</div>
+            </div>
+            <div class="flex gap-2">
+              <button onclick="event.stopPropagation(); openTimeblockModal(null, '${dateStr}')" class="bg-emerald-600 hover:bg-emerald-500 text-xs px-3 py-1.5 rounded-xl text-white font-medium">+ 補登時段</button>
+              <button onclick="event.stopPropagation(); openEventModal(null, '${dateStr}')" class="bg-[#1a2336] text-xs px-3 py-1.5 rounded-xl border border-slate-700 text-white hover:bg-slate-700">+ 新增排程</button>
+            </div>
+          </div>
+
+          <div class="space-y-2 mb-4">
+            <div class="text-xs font-semibold text-emerald-400">⏱ 當日專注時間塊 (點擊可修改)：</div>
+        `;
+
+        if (dayBlocks.length === 0) {
+          html += `<div class="p-3 bg-[#0c101a] rounded-2xl border border-slate-800 text-center text-xs text-slate-500">今日尚無專注時間塊紀錄。</div>`;
+        } else {
+          dayBlocks.forEach(b => {
+            const timeLabel = (b.startTime && b.endTime) ? `${b.startTime} - ${b.endTime}` : `約 ${Math.round(b.duration/60)} 分鐘`;
+            html += `
+              <div onclick="openTimeblockModal('${b.id}')" class="p-3 bg-[#121826] hover:bg-slate-850 border border-emerald-500/40 rounded-2xl flex justify-between items-center cursor-pointer transition">
+                <div class="flex items-center gap-2">
+                  <span class="font-mono text-emerald-300 text-xs font-bold bg-emerald-950 px-2 py-0.5 rounded">${timeLabel}</span>
+                  <span class="font-semibold text-sm text-white">${b.task}</span>
+                  <span class="text-[10px] text-slate-400">(${b.subject})</span>
+                </div>
+                <span class="text-xs text-slate-400">✏️ 編輯</span>
+              </div>
+            `;
+          });
+        }
+
+        html += `
+          </div>
+          <div class="space-y-2">
+            <div class="text-xs font-semibold text-slate-400">📅 當日排程：</div>
+        `;
+
+        if (dayEvents.length === 0) {
+          html += `<div class="p-3 bg-[#0c101a] rounded-2xl border border-slate-800 text-center text-xs text-slate-500">今日尚未安排排程。</div>`;
+        } else {
+          dayEvents.forEach(e => {
+            const isTimed = e.type === 'timed';
+            const timeText = e.startTime ? `${e.startTime} - ${e.endTime || ''}` : '全天日程';
+            html += `
+              <div onclick="openEventModal('${e.id}')" class="p-3 bg-[#121826] hover:bg-slate-850 border ${isTimed ? 'border-amber-600/50' : 'border-slate-800'} rounded-2xl flex justify-between items-center cursor-pointer transition shadow-sm">
+                <div>
+                  <div class="flex items-center gap-2">
+                    <span class="text-xs px-2 py-0.5 rounded-full font-medium ${isTimed ? 'bg-amber-950 text-amber-300 border border-amber-800' : 'bg-[#1e222d] text-slate-300'}">
+                      ${isTimed ? '⏱ 計時任務' : '📅 預定日程'}
+                    </span>
+                    <span class="font-semibold text-sm text-white">${e.title}</span>
+                  </div>
+                  <div class="text-xs text-slate-400 mt-1">
+                    時間：${timeText} ${e.note ? `• ${e.note}` : ''}
+                  </div>
+                </div>
+                <div class="flex items-center gap-2">
+                  ${isTimed ? `
+                    <button onclick="event.stopPropagation(); startTimerFromEvent('${e.title}')" class="bg-amber-600 hover:bg-amber-500 text-white text-xs px-3 py-1.5 rounded-xl font-bold transition shadow">
+                      ▶ 開始計時
+                    </button>
+                  ` : ''}
+                  <span class="text-xs text-slate-500">編輯 &rarr;</span>
+                </div>
+              </div>
+            `;
+          });
+        }
+        html += `</div>`;
+        container.innerHTML = html;
+      }
+    }
+
+    /* -------------------------------------------------------------
+       日期詳情 Modal
+    ------------------------------------------------------------- */
+    function openDayDetailModal(dateStr) {
+      currentDetailDateStr = dateStr;
+      document.getElementById('dayDetailDateTitle').innerText = `${dateStr} 專注與排程詳情`;
+      
+      const dayBlocks = (appData.timeBlocks || []).filter(t => t.date === dateStr);
+      const totalSec = dayBlocks.reduce((sum, item) => sum + (item.duration || 0), 0);
+      const totalHours = (totalSec / 3600).toFixed(2);
+      document.getElementById('dayDetailTotalTime').innerText = `總專注時長：${totalHours} 小時 (${Math.round(totalSec / 60)} 分鐘)`;
+
+      const tbListContainer = document.getElementById('dayDetailTimeBlocks');
+      tbListContainer.innerHTML = '';
+      if (dayBlocks.length === 0) {
+        tbListContainer.innerHTML = `<div class="text-xs text-slate-500 py-1">當日無專注時段紀錄。</div>`;
+      } else {
+        dayBlocks.forEach(b => {
+          const timeLabel = (b.startTime && b.endTime) ? `${b.startTime} - ${b.endTime}` : `約 ${Math.round(b.duration/60)} 分鐘`;
+          const row = document.createElement('div');
+          row.className = "p-2 rounded-xl border bg-emerald-950/40 border-emerald-500/40 flex justify-between items-center text-xs";
+          row.innerHTML = `
+            <div class="flex items-center gap-2">
+              <span class="font-mono text-emerald-400 font-bold bg-emerald-950 px-2 py-0.5 rounded border border-emerald-600/40">${timeLabel}</span>
+              <span class="font-medium text-white">${b.task}</span>
+              <span class="text-[10px] text-slate-400">(${b.subject})</span>
+            </div>
+            <button onclick="closeDayDetailModal(); openTimeblockModal('${b.id}')" class="text-indigo-400 hover:text-indigo-300 font-semibold text-xs">✏ 修改</button>
+          `;
+          tbListContainer.appendChild(row);
+        });
+      }
+
+      const subjectStatsContainer = document.getElementById('dayDetailSubjectStats');
+      subjectStatsContainer.innerHTML = '';
+
+      if (dayBlocks.length === 0) {
+        subjectStatsContainer.innerHTML = `<div class="text-xs text-slate-500 py-1">當日無專注計時紀錄。</div>`;
+      } else {
+        const subjectMap = {};
+        dayBlocks.forEach(b => {
+          const sub = b.subject || '未分類';
+          subjectMap[sub] = (subjectMap[sub] || 0) + (b.duration || 0);
+        });
+
+        const sortedSubs = Object.keys(subjectMap).sort((a, b) => subjectMap[b] - subjectMap[a]);
+
+        sortedSubs.forEach(sub => {
+          const sec = subjectMap[sub];
+          const hrs = Math.floor(sec / 3600);
+          const mins = Math.round((sec % 3600) / 60);
+          const percent = totalSec > 0 ? Math.round((sec / totalSec) * 100) : 0;
+          
+          let durationLabel = '';
+          if (hrs > 0) durationLabel += `${hrs} 小時 `;
+          durationLabel += `${mins} 分鐘`;
+
+          const row = document.createElement('div');
+          row.className = "bg-[#182032] p-2.5 rounded-2xl border border-slate-700/60";
+          row.innerHTML = `
+            <div class="flex justify-between items-center text-xs mb-1.5">
+              <span class="font-medium text-white flex items-center gap-1.5">
+                <span class="w-2 h-2 rounded-full bg-indigo-400"></span>
+                ${sub}
+              </span>
+              <span class="text-slate-300 font-mono">${durationLabel} <span class="text-[10px] text-slate-500">(${percent}%)</span></span>
+            </div>
+            <div class="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
+              <div class="bg-indigo-500 h-1.5 rounded-full" style="width: ${percent}%"></div>
+            </div>
+          `;
+          subjectStatsContainer.appendChild(row);
+        });
+      }
+
+      const eventListContainer = document.getElementById('dayDetailEventList');
+      eventListContainer.innerHTML = '';
+      const dayEvents = (appData.events || []).filter(e => e.date === dateStr);
+
+      if (dayEvents.length === 0) {
+        eventListContainer.innerHTML = `<div class="text-xs text-slate-500 py-1">當日無排程。</div>`;
+      } else {
+        dayEvents.forEach(e => {
+          const isTimed = e.type === 'timed';
+          const timeText = e.startTime ? `${e.startTime} - ${e.endTime || ''}` : '全天';
+          const row = document.createElement('div');
+          row.className = `p-2.5 rounded-2xl border flex justify-between items-center text-xs ${isTimed ? 'bg-amber-950/40 border-amber-600/40 text-amber-200' : 'bg-[#182032] border-slate-700 text-slate-200'}`;
+          row.innerHTML = `
+            <div>
+              <div class="font-semibold">${isTimed ? '⏱ ' : '📅 '}${e.title}</div>
+              <div class="text-[10px] text-slate-400 mt-0.5">${timeText} ${e.note ? '• ' + e.note : ''}</div>
+            </div>
+            <div class="flex items-center gap-2">
+              ${isTimed ? `
+                <button onclick="startTimerFromEvent('${e.title}')" class="bg-amber-600 hover:bg-amber-500 text-white text-[11px] px-2.5 py-1 rounded-xl font-bold">
+                  ▶ 計時
+                </button>
+              ` : ''}
+              <button onclick="closeDayDetailModal(); openEventModal('${e.id}')" class="text-slate-400 hover:text-white text-xs">編輯</button>
+            </div>
+          `;
+          eventListContainer.appendChild(row);
+        });
+      }
+
+      document.getElementById('dayDetailAddTbBtn').onclick = () => {
+        closeDayDetailModal();
+        openTimeblockModal(null, dateStr);
+      };
+
+      document.getElementById('dayDetailAddEventBtn').onclick = () => {
+        closeDayDetailModal();
+        openEventModal(null, dateStr);
+      };
+
+      document.getElementById('dayDetailModal').classList.remove('hidden');
+    }
+
+    function closeDayDetailModal() {
+      document.getElementById('dayDetailModal').classList.add('hidden');
+    }
+
+    /* -------------------------------------------------------------
+       專注時段 Modal
+    ------------------------------------------------------------- */
+    function openTimeblockModal(tbId = null, defaultDate = null) {
+      const modal = document.getElementById('timeblockModal');
+      const delBtn = document.getElementById('deleteTbBtn');
+      document.getElementById('editTbId').value = tbId || '';
+
+      if (tbId) {
+        const tb = (appData.timeBlocks || []).find(item => item.id === tbId);
+        document.getElementById('tbModalTitle').innerText = "修改專注使用時間";
+        document.getElementById('tbDateInput').value = tb.date;
+        document.getElementById('tbTaskInput').value = tb.task;
+        document.getElementById('tbSubjectSelect').value = tb.subject || '未分類';
+        document.getElementById('tbStartInput').value = tb.startTime || '09:00';
+        document.getElementById('tbEndInput').value = tb.endTime || '10:00';
+        delBtn.classList.remove('hidden');
+      } else {
+        document.getElementById('tbModalTitle').innerText = "補登專注使用時間";
+        document.getElementById('tbDateInput').value = defaultDate || currentDetailDateStr || getLocalDateString();
+        document.getElementById('tbTaskInput').value = '專注學習';
+        document.getElementById('tbStartInput').value = '09:00';
+        document.getElementById('tbEndInput').value = '10:00';
+        delBtn.classList.add('hidden');
+      }
+
+      modal.classList.remove('hidden');
+    }
+
+    function closeTimeblockModal() {
+      document.getElementById('timeblockModal').classList.add('hidden');
+    }
+
+    async function onSaveTimeblock() {
+      const id = document.getElementById('editTbId').value;
+      const date = document.getElementById('tbDateInput').value;
+      const task = document.getElementById('tbTaskInput').value.trim() || '專注學習';
+      const subject = document.getElementById('tbSubjectSelect').value || '未分類';
+      const start = document.getElementById('tbStartInput').value;
+      const end = document.getElementById('tbEndInput').value;
+
+      if (!date) return alert('請選擇日期');
+      if (!start || !end) return alert('請輸入開始與結束時間');
+
+      const [sh, sm] = start.split(':').map(Number);
+      const [eh, em] = end.split(':').map(Number);
+      let durationSec = (eh * 3600 + em * 60) - (sh * 3600 + sm * 60);
+      if (durationSec <= 0) durationSec = 600;
+
+      const payload = {
+        id: id,
+        date: date,
+        task: task,
+        subject: subject,
+        durationSec: durationSec,
+        startTime: start,
+        endTime: end
+      };
+
+      closeTimeblockModal();
+      if (id) {
+        await callApi('updateFocusSession', payload);
+      } else {
+        await callApi('saveFocusSession', payload);
+      }
+      fetchData();
+    }
+
+    async function onDeleteCurrentTimeBlock() {
+      const id = document.getElementById('editTbId').value;
+      if (confirm('確定要刪除這筆專注時段嗎？')) {
+        closeTimeblockModal();
+        await callApi('deleteFocusSession', id);
+        fetchData();
+      }
+    }
+
+    /* -------------------------------------------------------------
+       排程 Modal
+    ------------------------------------------------------------- */
+    function toggleAllDay(checked) {
+      const timeRow = document.getElementById('timeInputsRow');
+      if (checked) {
+        timeRow.classList.add('opacity-40', 'pointer-events-none');
+      } else {
+        timeRow.classList.remove('opacity-40', 'pointer-events-none');
+      }
+    }
+
+    function openEventModal(eventId = null, defaultDate = null) {
+      const modal = document.getElementById('eventModal');
+      const delBtn = document.getElementById('deleteEventBtn');
+      document.getElementById('editEventId').value = eventId || '';
+
+      if (eventId) {
+        const ev = appData.events.find(item => item.id === eventId);
+        document.getElementById('eventModalTitle').innerText = "修改排程事項";
+        document.getElementById('eventTitleInput').value = ev.title;
+        document.getElementById('eventDateInput').value = ev.date;
+
+        const isAllDay = !ev.startTime && !ev.endTime;
+        document.getElementById('allDayCheckbox').checked = isAllDay;
+        toggleAllDay(isAllDay);
+
+        document.getElementById('eventStartInput').value = ev.startTime || '09:00';
+        document.getElementById('eventEndInput').value = ev.endTime || '10:00';
+        document.getElementById('eventNoteInput').value = ev.note || '';
+
+        const typeRadios = document.getElementsByName('eventType');
+        for (let r of typeRadios) {
+          r.checked = (r.value === (ev.type || 'regular'));
+        }
+
+        delBtn.classList.remove('hidden');
+      } else {
+        document.getElementById('eventModalTitle').innerText = "新增排程事項";
+        document.getElementById('eventTitleInput').value = '';
+        document.getElementById('eventDateInput').value = defaultDate || currentDetailDateStr || getLocalDateString();
+
+        document.getElementById('allDayCheckbox').checked = false;
+        toggleAllDay(false);
+
+        document.getElementById('eventStartInput').value = '09:00';
+        document.getElementById('eventEndInput').value = '10:00';
+        document.getElementById('eventNoteInput').value = '';
+
+        const typeRadios = document.getElementsByName('eventType');
+        for (let r of typeRadios) {
+          r.checked = (r.value === 'regular');
+        }
+
+        delBtn.classList.add('hidden');
+      }
+      modal.classList.remove('hidden');
+    }
+
+    function closeEventModal() {
+      document.getElementById('eventModal').classList.add('hidden');
+    }
+
+    async function onSaveEvent() {
+      let selectedType = 'regular';
+      const typeRadios = document.getElementsByName('eventType');
+      for (let r of typeRadios) {
+        if (r.checked) selectedType = r.value;
+      }
+
+      const isAllDay = document.getElementById('allDayCheckbox').checked;
+      const startTime = isAllDay ? '' : document.getElementById('eventStartInput').value;
+      const endTime = isAllDay ? '' : document.getElementById('eventEndInput').value;
+
+      const payload = {
+        id: document.getElementById('editEventId').value,
+        title: document.getElementById('eventTitleInput').value.trim(),
+        date: document.getElementById('eventDateInput').value,
+        startTime: startTime,
+        endTime: endTime,
+        note: document.getElementById('eventNoteInput').value.trim(),
+        type: selectedType
+      };
+
+      if (!payload.title) return alert('請填寫活動名稱');
+      if (!payload.date) return alert('請選擇活動日期');
+
+      closeEventModal();
+      await callApi('saveOrUpdateEvent', payload);
+      fetchData();
+    }
+
+    async function onDeleteEvent() {
+      const id = document.getElementById('editEventId').value;
+      if (confirm('確定要刪除此排程嗎？')) {
+        closeEventModal();
+        await callApi('deleteEvent', id);
+        fetchData();
+      }
+    }
+  </script>
+</body>
+</html>
